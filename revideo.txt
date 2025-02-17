@@ -1,0 +1,1006 @@
+=== Installation and Setup Guide ===
+
+# Quickstart
+
+Revideo is an open-source framework for programmatic video editing. It lets you
+create video templates in Typescript and provides an API to render these video
+templates with dynamic inputs. It also provides a player component that you can
+embed into your website to let users preview videos before exporting them to
+mp4. Developers use Revideo to automate certain video editing tasks or to build
+entire web-based video editors.
+
+[Rest of the content...]
+
+=== Project Structure ===
+
+# Project Structure
+
+Revideo projects are structured similar to most Typescript projects. Here is the
+structure of the default project that gets initialized when you run
+`npm init @revideo@latest`:
+
+my-project/
+├── package.json
+├── package-lock.json
+├── tsconfig.json
+├── vite.config.ts
+├── src/
+│   ├── project.ts
+│   ├── render.ts
+│   ├── project.meta
+│   └── scenes/
+│       └── example.tsx
+└── public/
+	└── my-video.mp4
+
+Let's walk through the most relevant files:
+
+### `./src/scenes/example.tsx`
+[Rest of the content including all file explanations, code examples, and the public folder section...]
+
+=== Scene Flow ===
+
+# Scene Flow
+
+Revideo lets you define your scene through a generator function. This section
+will go into more detail about how this works and walk through a few examples to
+provide a better understanding for developers. It is also **highly recommended**
+to read through the [Motion Canvas guide] for better understanding.
+
+[Rest of the content from understanding-scene-flow.mdx including all examples and explanations about yield vs yield* vs no yield...]
+
+---
+d:\RevideoAI\revideo\docs\pages\guide\understanding-scene-flow.mdx
+---
+---
+sidebar_position: 3
+slug: /understanding-scene-flow
+---
+
+# Scene Flow
+
+Revideo lets you define your scene through a generator function. This section
+will go into more detail about how this works and walk through a few examples to
+provide a better understanding for developers. It is also **highly recommended**
+to read through the [Motion Canvas guide](/category/motion-canvas-guide) for
+better understanding.
+
+## Scenes are defined sequentially
+
+Generator functions are defined as a sequence of `yield`s. When you first call a
+generator function, the first yielded value gets returned. When you call it
+again, the second yielded value gets returned:
+
+```ts
+function* example() {
+	yield 1;
+	yield 2;
+	yield 3;
+}
+
+const generator = example();
+
+console.log(generator.next().value); // 1;
+console.log(generator.next().value); // 2;
+console.log(generator.next().value); // 3;
+```
+
+The fact that Revideo uses generator functions lets you define your videos in an
+intuitive imperative manner - When thinking about what your video should look
+like, you'll probably think of it as a sequence of concrete steps:
+
+- At first, a red circle should appear in the center of my video
+- The circle should move to the right by 200 pixels within two seconds
+- Then, the circle disappears from the video
+- Afterwards, nothing happens for one second
+
+In Revideo, your code can be translated in a relatively straightforward way -
+you can read your scene code from top to bottom to understand what is happening:
+
+```tsx editor
+import {Circle, makeScene2D} from '@revideo/2d';
+import {createRef, waitFor} from '@revideo/core';
+
+export default makeScene2D(function* (view) {
+	const circleRef = createRef<Circle>();
+
+	// At first, a red circle should appear in the center of my video
+	yield view.add(<Circle fill={'red'} size={100} ref={circleRef} />);
+
+	// The circle should move to the right by 200 pixels within two seconds
+	yield* circleRef().position.x(200, 2);
+
+	// Then, the circle disappears from the video
+	circleRef().remove();
+
+	// Afterwards, nothing happens for one second
+	yield* waitFor(1);
+});
+```
+
+In many cases, you might want to do animate multiple things in parallel. For
+this, you can use flow generators like [`all`](/flow#all).
+
+## `yield` vs `yield*` vs no yield
+
+Something that confuses many people getting started with Revideo is the
+difference between `yield*` and `yield`, as well as the difference between
+`yield view.add` and calling `view.add` without yielding.
+
+### `yield view.add` vs `view.add`
+
+When looking at code examples of Revideo, you might notice that they sometimes
+contain `yield view.add` and sometimes only `view.add`- this is not limited to
+`view`, but also to many other operations or adding to nodes other than `View2D`
+nodes.
+
+Adding a `yield` in front of an operation ensures that Revideo awaits any
+promises associated with that operation, such as network requests or awaiting
+fonts to load. As an example, here is code that has a yield in front of it as it
+creates a promise:
+
+```tsx
+yield view.add(
+	<Img
+		src={
+			'https://revideo-example-assets.s3.amazonaws.com/revideo-logo-white.png'
+		}
+	/>,
+);
+```
+
+In the code above, we initialize an `Img` node which loads an image from the
+internet. This creates a promise - adding a `yield` in front of `view.add`
+ensures that the code will continue executing only once the promise is resolved
+(the image is loaded).
+
+Promises are not just caused by obvious network requests such as the one above.
+They might also be created if you add a text node, as Revideo will have to wait
+for the `document.fonts.ready` event to fire. If you want to be safe, you can
+simply `yield` every `add` call - this is a good catch-all and won't cause
+problems. If you don't have a `yield` in front of an operation that creates a
+promise, Revideo will also throw a warning that says
+`Tried to access an asynchronous property before the node was ready`.
+
+### Will calling `yield` add an extra frame to my video?
+
+We often explain Revideo by saying that every `yield` corresponds to a frame in
+your video. This is good for a rough understanding, but not 100% correct. A
+`yield` will only correspond to a frame when the yielded value is falsy. When
+stepping through your generator function to render a video, this is how Revideo
+decides if it should draw a frame or not (pseudocode):
+
+```ts
+let result = scene.next();
+
+// we don't draw a frame while the yield is not empty
+while (result.value) {
+	// promises get awaited
+	if (isPromise(result.value)) {
+		result = await result.value;
+
+		// the yielded value should be a promise; you shouldn't do something like `yield 5;` inside your scene
+	} else {
+		console.warn('Invalid value yielded by the scene.');
+	}
+
+	result = scene.next();
+}
+
+// when the result is empty (while loop passed), we render a frame
+drawFrame();
+```
+
+Looking at some scene code, this is what would happen:
+
+```tsx
+yield view.add(<Img src={'img.png'} />); // yielded promise, we await it and dont render a frame.
+
+// we yield 30 empty values, corresponding to 30 frames (or 1 second of video in case of 30fps). This is the same as calling yield* waitFor(1);
+for (let i = 0; i < 30; i++) {
+	yield;
+}
+```
+
+### `yield` vs `yield*`
+
+`yield` is used to pause the execution of a generator and return a single value,
+whereas `yield*` delegates to another generator function. Roughly speaking, you
+should `yield` everything that's just a single operation, while you `yield*`
+generators that produce multiple frames:
+
+```tsx
+yield view.add(<Img src={'img.png'} />); // doesn't produce a frame
+
+yield * waitFor(1); // takes time, produces multiple frames
+```
+
+---
+d:\RevideoAI\revideo\docs\pages\_app.mdx
+---
+
+This is a Next.js app configuration file that sets up PostHog analytics and Crisp chat widget. The file contains the following functionality:
+
+1. Imports required dependencies including PostHog and custom styles
+2. Sets up PostHog analytics initialization and page view tracking
+3. Configures the Crisp chat widget integration
+4. Wraps the application with PostHog provider
+
+Key implementation details:
+```jsx
+import "./style.css";
+import Script from "next/script";
+import {useEffect} from "react";
+import {useRouter} from "next/router";
+import posthog from "posthog-js";
+import {PostHogProvider} from "posthog-js/react";
+import {CrispWidget} from "../components/support-chat";
+
+export default function App({Component, pageProps}) {
+	const router = useRouter();
+	useEffect(() => {
+		// Initialize PostHog
+		if (typeof window !== "undefined") {
+			posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
+				api_host: "https://eu.posthog.com",
+				ui_host: "https://eu.posthog.com",
+				loaded: (posthog) => {
+					if (process.env.NODE_ENV === "development") posthog.debug();
+				},
+			});
+		}
+		// Track page views
+		const handleRouteChange = () => {
+			posthog.capture("$pageview");
+		};
+		router.events.on("routeChangeComplete", handleRouteChange);
+		return () => {
+			router.events.off("routeChangeComplete", handleRouteChange);
+		};
+	}, []);
+	return (
+		<div>
+			<PostHogProvider client={posthog}>
+				<Component {...pageProps} />
+				{process.env.NEXT_PUBLIC_CRISP_WEBSITE_ID ? <CrispWidget /> : null}
+			</PostHogProvider>
+		</div>
+	);
+}
+```
+
+---
+d:\RevideoAI\revideo\docs\pages\code-snippets\changing-object-size-over-time-with-signals.mdx
+---
+
+This code snippet demonstrates how to change object sizes over time using signals in Revideo.
+
+```tsx player
+import {Circle, Txt, makeScene2D} from "@revideo/2d";
+import {createSignal} from "@revideo/core";
+
+export default makeScene2D(function* (view) {
+	const circleSize = createSignal(50); // initial size of 50
+
+	yield view.add(
+		<>
+			<Circle fill={"green"} size={circleSize} />
+			<Txt fontSize={40} x={-300}>
+				{() => `size: ${circleSize().toFixed(1)}`}
+			</Txt>
+		</>,
+	);
+
+	yield* circleSize(200, 2); // change size to 200 over two seconds
+});
+```
+
+---
+d:\RevideoAI\revideo\docs\pages\code-snippets\hls-video.mdx
+---
+
+# HLS Video
+
+Revideo supports HLS video streaming for both preview and rendering. Note that HLS video cannot use the fast webcodecs based video decoder, resulting in slower rendering compared to .mp4 files.
+
+Usage example with Video tag and .m3u8 file:
+
+```tsx
+import {Video, makeScene2D} from '@revideo/2d';
+import {waitFor} from '@revideo/core';
+
+export default makeScene2D(function* (view) {
+	yield view.add(
+		<>
+			<Video
+				src={'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'}
+				play={true}
+				height={'100%'}
+				time={5}
+			/>
+		</>,
+	);
+
+	yield* waitFor(10);
+});
+```
+
+# Moving and Manipulating Objects
+
+This example demonstrates how to move objects and manipulate them using various functions. The code shows how to move a square with text around the screen, scale it, and transform it into a circle:
+
+```tsx
+import {Rect, Txt, makeScene2D} from '@revideo/2d';
+import {all, waitFor, createRef, easeInBounce, easeInExpo} from '@revideo/core';
+
+export default makeScene2D(function* (view) {
+	const rectRef = createRef<Rect>();
+
+	yield view.add(
+		<Rect fill={'blue'} size={[100, 100]} ref={rectRef}>
+			<Txt fontSize={30} fontFamily={'Sans-Serif'} fill={'white'}>
+				Hi!
+			</Txt>
+		</Rect>,
+	);
+
+	yield* waitFor(0.5); // do nothing for 0.5s
+	yield* all(rectRef().position.x(200, 1), rectRef().position.y(50, 1)); // move the rectangle to [200, 50] in 1s
+	yield* all(rectRef().position.x(0, 2), rectRef().position.y(0, 2)); // move the rectangle to [0,0] (center) in 2s
+
+	yield* rectRef().scale(2, 1); // scale the rectangle by 2 in 1s
+	yield* rectRef().radius(100, 1); // increase the radius to 100 in 1s
+	yield* waitFor(1); // do nothing for 1s
+});
+```
+
+# Streaming Text
+
+This section demonstrates how to stream text in Revideo animations. There are two main approaches:
+
+1. Using the `.text()` method:
+
+```tsx
+import {Txt, makeScene2D} from '@revideo/2d';
+import {createRef, waitFor} from '@revideo/core';
+
+export default makeScene2D(function* (view) {
+  const textRef = createRef<Txt>();
+  yield view.add(
+    <Txt fontFamily={'Sans-Serif'} fill={'red'} ref={textRef}></Txt>,
+  );
+
+  yield* textRef().text('This is a text', 2);
+});
+```
+
+2. Using repeated `.add()` calls for more precise control:
+
+```tsx
+import {Txt, makeScene2D} from '@revideo/2d';
+import {createRef, waitFor} from '@revideo/core';
+
+export default makeScene2D(function* (view) {
+  const textRef = createRef<Txt>();
+  yield view.add(
+    <Txt fontFamily={'Sans-Serif'} fill={'red'} ref={textRef}></Txt>,
+  );
+
+  const words = ['This', 'is', 'a', 'text'];
+  const secondsToAppear = [0.3, 0.6, 0.4, 0.2, 0.5];
+
+for (let i = 0; i < words.length; i++) {
+	textRef().add(<Txt>{words[i]} </Txt>);
+	yield* waitFor(secondsToAppear[i]);
+}
+
+
+
+
+
+const avatarRef = createRef<Video>();
+const backgroundRef = createRef<Img>();
+
+yield view.add(
+	<>
+		<Img
+			src={'https://revideo-example-assets.s3.amazonaws.com/mountains.jpg'}
+			width={'100%'}
+			ref={backgroundRef}
+		/>
+		<Video
+			src={'https://revideo-example-assets.s3.amazonaws.com/avatar.webm'}
+			play={true}
+			height={'100%'}
+			ref={avatarRef}
+		/>
+	</>,
+);
+
+yield* waitFor(avatarRef().getDuration());
+
+# Transparent Video
+
+Revideo supports transparent videos using the VP9 codec (usually .webm files). This is useful for overlaying videos on top of other content like backgrounds.
+
+Key points:
+- Use VP9 codec for transparent videos (.webm extension)
+- ffmpeg can be used to re-encode videos
+- Note: HEVC codec may show transparency in preview but loses it during rendering
+
+Example usage:
+```tsx
+<Img src="background.jpg" width="100%" />
+<Video src="avatar.webm" play={true} height="100%" />
+```
+---
+
+# Slow Rendering
+
+Strategies to improve rendering speed in Revideo:
+
+1. Version Updates:
+   - Keep Revideo updated to latest version for performance improvements
+
+2. Video Decoder Selection:
+   - Use appropriate decoder for different file types:
+	 - `decoder="web"` for mp4 (best performance)
+	 - `decoder="ffmpeg"` for .webm
+	 - `decoder="slow"` for other formats
+   ```tsx
+   <Video src="your_file" decoder="web" />
+   ```
+
+3. Resolution Optimization:
+   - Lower output resolution using `resolutionScale` in `project.meta`
+   - Scale 0.5 can make renders twice as fast as default 1.0
+
+4. Asset Optimization:
+   - Use appropriately sized assets
+   - Avoid using 4K videos when targeting 1080p output
+
+5. Parallel Rendering:
+   - Use `workers` argument in `renderVideo()`
+   - Use `renderPartialVideo()` with serverless functions
+   - Options: Google Cloud Run, AWS Lambda
+   - Note: Higher memory usage with multiple workers
+
+---
+
+# Getting Help on Discord
+
+Join the Revideo Discord community: [Discord Invite](https://discord.gg/MVJsrqjy3j)
+
+## Best Practices for Asking Questions:
+
+1. Self-Investigation Steps:
+   - Isolate problematic code
+   - Test with different media files
+   - Verify local functionality for cloud issues
+
+2. Required Context for Questions:
+   - Revideo version (from package.json)
+   - Investigation findings
+   - Template usage and modifications
+   - Issue trigger description
+   - Full error logs
+   - Relevant code snippets
+
+Note: Including complete context helps the team provide faster solutions.
+
+---
+
+# Parameterized Videos
+
+Create dynamic videos with customizable inputs:
+
+1. Using Scene Variables:
+   ```tsx
+   const name = useScene().variables.get('username', 'new user');
+   // 'new user' is the default value if username not provided
+   ```
+
+2. Passing Parameters:
+   - To renderVideo():
+   ```tsx
+   renderVideo({
+	 projectFile: './src/project.ts',
+	 variables: {username: 'Mike'},
+   });
+   ```
+   
+   - To visual editor (in project.ts):
+   ```tsx
+   makeProject({
+	 scenes: [example],
+	 variables: {username: 'Mike'},
+   });
+   ```
+
+3. Advanced Usage:
+   - Can pass file paths for AI-generated content
+   - Support for complex parameters (images, audio, subtitles)
+   - Example: [Youtube Short project](https://github.com/redotvideo/examples/tree/main/youtube-shorts)
+
+---
+
+# Rendering Videos
+
+1. Using renderVideo() Function:
+   ```ts
+   import {renderVideo} from '@revideo/renderer';
+   
+   const file = await renderVideo({
+	 projectFile: './src/project.ts',
+	 settings: {logProgress: true},
+   });
+   ```
+
+2. Browser Rendering:
+   - Use "Render" button in editor (npm start)
+
+3. Rendering Process:
+   - Browser: Handles frame rendering via HTML Canvas and VideoEncoder
+   - Backend: Processes audio using ffmpeg
+   - Output: Merges video and audio into final mp4
+
+4. Performance:
+   - Post v0.4.6: Faster than real-time rendering
+   - Parallelization options:
+	 - Single process: Use settings.worker argument
+	 - Serverless: AWS Lambda (recommended) or Google Cloud Functions
+	 - Functions: renderPartialVideo(), concatenateMedia(), mergeAudioWithVideo()
+
+---
+
+# Using Render Endpoint
+
+Access deployments at: `https://re.video/platform/{org-name}/{repo-name}`
+
+## API Usage:
+```bash
+curl -X POST \
+  https://api.re.video/v1/render/{deployment-id} \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: <api-key>' \
+  -d '{
+    "variables": {
+      "text": "Hello world"
+    },
+    "settings": {
+      "workers": 5
+    }
+  }'
+```
+
+## Request Parameters:
+1. variables: Video parameters (any type)
+2. callbackUrl: Optional webhook URL
+3. settings:
+   - workers: Number of parallel workers
+
+## Response Types:
+1. Without callback:
+   ```json
+   {
+     "resultUrl": "https://<storage-url>.com/<video-id>.mp4"
+   }
+   ```
+2. With callback:
+   - Immediate: 200 "ok"
+   - Webhook: Same JSON as above
+
+Error Codes:
+- 401: Invalid API key
+- 400: Invalid request/deployment
+- 404: Deployment not found
+- 500: Server error
+
+---
+
+# Upgrading from 0.2.x to 0.3.x
+
+Key Change: FFmpeg moved from plugin to core library
+
+## Configuration Update:
+Old config (0.2.x):
+```ts
+import {defineConfig} from 'vite';
+import motionCanvas from '@revideo/vite-plugin';
+import ffmpeg from '@revideo/ffmpeg';
+
+export default defineConfig({
+	plugins: [motionCanvas(), ffmpeg()],
+});
+```
+
+New config (0.3.x):
+```ts
+import {defineConfig} from 'vite';
+import motionCanvas from '@revideo/vite-plugin';
+
+export default defineConfig({
+	plugins: [motionCanvas()],
+});
+```
+
+Support: For issues, use Github, Discord, or website chat.
+
+---
+
+# Upgrading from 0.3.x to 0.4.x
+
+## Breaking Changes:
+
+1. renderVideo() Changes:
+   - Now accepts arguments as object
+   - Points to project file instead of vite config
+   
+   Old (0.3.x):
+   ```tsx
+   const file = await renderVideo(
+	 'vite.config.ts',
+	 {fill: 'orange'},
+	 {logProgress: true},
+   );
+   ```
+
+   New (0.4.x):
+   ```tsx
+   const file = await renderVideo({
+	 projectFile: './src/project.ts',
+	 variables: {fill: 'orange'},
+	 settings: {logProgress: true},
+   });
+   ```
+
+   Settings changes:
+   - 'name' renamed to 'outFile' (must include .mp4)
+   - 'progressCallback' moved to settings object
+
+2. Player URL Change:
+   Old (0.3.x):
+   ```tsx
+   <Player src="http://localhost:4000/player/project.js" controls={true} />
+   ```
+
+   New (0.4.x):
+   ```tsx
+   <Player src="http://localhost:4000/player" controls={true} />
+   ```
+
+Note: Public folder assets now accessible in Player projects.
+
+---
+
+# React Player Component
+
+## Installation
+```bash
+npm install @revideo/player-react
+```
+
+## Usage Methods:
+
+1. Using CLI (Recommended):
+   ```bash
+   npx revideo serve
+   ```
+   ```tsx
+   import {Player} from '@revideo/player-react';
+   <Player src="http://localhost:4000/player" />;
+   ```
+
+2. Manual Build:
+   ```bash
+   npm run build
+   // Copy 'out' directory to server
+   <Player src="https://example.com/outDir" />;
+   ```
+
+## Props:
+- src: Bundle folder path
+- controls?: boolean (default=true)
+- variables?: Record<string, any> (default={})
+- playing?: boolean (default=false)
+- currentTime?: number
+- looping?: boolean (default=true)
+- width?: number
+- height?: number
+- quality?: number (default=1)
+- displayTimeFormat?: 'MM:SS' | 'MM:SS.m' | 'MM:SS.mm'
+
+## Events:
+- onDurationChange?: (duration: number) => void
+- onTimeUpdate?: (time: number) => void
+
+---
+
+# renderPartialVideo()
+
+Function for distributed rendering workloads across multiple workers.
+
+## Basic Usage:
+```tsx
+const {audioFile, videoFile} = renderPartialVideo({
+	projectFile: "./src/project.ts",
+	variables: {color: "white"},
+	numWorkers: 10,
+	workerId: 3,
+	settings: {
+		dimensions: [1080, 1792],
+		logProgress: true
+	}
+});
+```
+
+## Key Parameters:
+- projectFile: Path to project file (e.g., "./src/project.ts")
+- workerId: Worker identifier (0-based)
+- numWorkers: Total number of workers
+- variables?: Video parameters
+- settings?: Configuration object:
+	- outFile?: Output filename (must end with .mp4)
+	- outDir?: Output directory (default="./output")
+	- range?: [start, end] seconds
+	- dimensions?: [width, height]
+	- logProgress?: boolean
+	- ffmpeg?: {ffmpegLogLevel?, ffmpegPath?}
+	- puppeteer?: BrowserLaunchArgumentOptions
+	- viteBasePort?: number (default=9000)
+	- progressCallback?: (worker: number, progress: number) => void
+
+Returns: `{ audioFile: string, videoFile: string }`
+
+Note: Use with concatenateMedia() and mergeAudioWithVideo() for final output.
+
+---
+
+# renderVideo()
+
+Function for rendering videos in a nodejs process using headless browser.
+
+## Basic Usage:
+```tsx
+import {renderVideo} from '@revideo/renderer';
+
+const videoPath = await renderVideo({
+	projectFile: './src/project.ts',
+	variables: {color: 'white'},
+	settings: {
+		outFile: 'video.mp4',
+		workers: 1,
+		dimensions: [1080, 1792],
+		logProgress: true
+	}
+});
+```
+
+## Parameters:
+1. projectFile: Path to project file (required)
+2. variables?: Video parameters object
+3. settings?: Configuration object:
+	 - outFile?: Output filename (.mp4)
+	 - outDir?: Output directory (default="./output")
+	 - range?: [start, end] seconds
+	 - workers?: Number of parallel processes (default=1)
+	 - dimensions?: [width, height]
+	 - logProgress?: boolean
+	 - ffmpeg?: {
+		 - ffmpegLogLevel?: 'error'|'warning'|'info'|'verbose'|'debug'|'trace'
+		 - ffmpegPath?: string
+	 }
+	 - puppeteer?: BrowserLaunchArgumentOptions
+	 - viteBasePort?: number (default=9000)
+	 - progressCallback?: (worker: number, progress: number) => void
+
+Returns: Path to rendered video (string)
+
+---
+
+# concatenateMedia()
+
+Function to concatenate multiple video or audio files.
+
+## Usage:
+```tsx
+import {concatenateMedia} from '@revideo/ffmpeg';
+
+const audios = ['audio-0.wav', 'audio-1.wav', 'audio-2.wav'];
+concatenateMedia(audios, 'audio.wav');
+```
+
+## Parameters:
+1. files: Array of input file paths
+2. outputFile: Path for the concatenated output file
+
+---
+
+# mergeAudioWithVideo()
+
+Function to combine audio and video files into a single output.
+
+## Usage:
+```tsx
+import {mergeAudioWithVideo} from '@revideo/ffmpeg';
+
+mergeAudioWithVideo('audio.wav', 'visuals.mp4', 'out.mp4');
+```
+
+## Parameters:
+1. audioPath: Path to audio file
+2. videoPath: Path to video file
+3. outputPath: Path for merged output file
+
+---
+
+# Deploying a Rendering Service
+
+Considerations:
+- Rendering requires 8-10GB RAM per job
+
+Deployment Options:
+
+1. Parallelized Serverless (Recommended):
+   - Use renderPartialVideo()
+   - AWS Lambda (faster cold starts)
+   - Google Cloud Functions
+   - Example projects:
+	 - AWS Lambda: [link](https://github.com/redotvideo/examples/tree/main/parallelized-aws-lambda)
+	 - Google Cloud Functions: [link](https://github.com/redotvideo/examples/tree/main/google-cloud-run-parallelized)
+
+2. Single-Process Rendering:
+   - Suitable for short videos
+   - Example (Express server):
+   ```ts
+   import {renderVideo} from '@revideo/renderer';
+   import express from 'express';
+   const app = express();
+
+   app.post('/render', async (req, res) => {
+	 const {variables} = req.body;
+	 const file = await renderVideo({
+	   projectFile: './src/project.ts',
+	   variables,
+	   settings: {outFile: 'video.mp4'}
+	 });
+	 res.sendFile(file);
+   });
+   ```
+   - Deploy on VM or serverless platform (e.g., Google Cloud Run)
+
+3. Revideo Platform:
+   - Cloud platform optimized for rendering
+   - Waitlist: [link](https://tally.so/r/mOz4GK)
+
+---
+
+# Revideo SaaS Template
+
+A NextJS starter template for building Revideo web applications:
+- Preview and edit videos
+- Export to mp4
+- Minimal setup
+
+Access template:
+1. Github: [repository](https://github.com/redotvideo/examples/tree/main/saas-template)
+2. CLI: `npm init @revideo@latest`
+
+---
+
+# Video Preview with Player
+
+Embed Revideo projects into React/NextJS apps for real-time preview.
+
+## Usage:
+
+1. With CLI (Recommended):
+   ```bash
+   npx revideo serve
+   ```
+   ```tsx
+   import {Player} from '@revideo/player-react';
+   <Player src="http://localhost:4000/player/" />;
+   ```
+   - Automatically builds and serves project
+   - Watches for changes
+
+2. Manually:
+   ```bash
+   npm run build
+   // Copy contents of 'dist' to web app's public directory
+   <Player src="https://example.com/outDir/" />;
+   ```
+
+Note: Ensure custom CSS and assets are accessible to the web app.
+
+---
+
+# Motion Canvas and Revideo
+
+Revideo is a fork of Motion Canvas with shared animation API.
+
+Resources:
+1. Core Animation Guide: [Motion Canvas Guide](/category/motion-canvas-guide)
+2. Code Examples:
+   - [Code Snippets](/category/code-snippets)
+   - [Streaming Text](/streaming-text)
+   - [Moving Objects](/moving-manipulating-objects)
+
+Note: Revideo-specific features (like Rive animations) are documented separately.
+
+---
+
+# Using Emojis
+
+For consistent emoji rendering across browsers, use specific emoji fonts.
+
+## Setup:
+
+1. Add fonts in src/global.css:
+```css
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@600&family=Noto+Color+Emoji&display=swap');
+```
+
+2. Import CSS and use fonts:
+```tsx
+// src/project.ts
+import './global.css';
+
+// In scenes:
+<Txt text={'Hello 🚀'} fontFamily={"Lexend, 'Noto Color Emoji'"} />
+```
+
+Note: Noto Color Emoji is recommended for consistent emoji rendering.
+
+---
+
+# Rive Animations
+
+Integrate Rive animations using the `<Rive/>` component:
+
+```tsx
+import {Rive, makeScene2D} from '@revideo/2d';
+
+export default makeScene2D(function* (view) {
+	yield view.add(
+		<Rive
+			src={'path/to/animation.riv'}
+			animationId={1}
+			size={[600, 600]}
+		/>
+	);
+});
+```
+
+## Props:
+- src: Path to .riv file (string)
+- animationId?: Animation identifier (string|number)
+- artboardId?: Artboard identifier (string|number)
+
+Note: `<Rive/>` extends `<Rect/>` component.
+
+---
+
+# Optimizing Performance with Node Isolation
+
+Frequent node updates (e.g., subtitles) can slow rendering.  Isolate frequently changing nodes from parent nodes to improve performance.
+
+## Inefficient Approach (Slow):
+```tsx
+// Repeatedly adding/removing <Txt/> nodes directly to the view causes re-renders of the entire view, including the <Video/>.
+yield view.add(<Txt text={w} />);
+yield* waitFor(0.3);
+textRef().remove();
+```
+
+## Efficient Approach (Fast):
+```tsx
+// Isolate frequently changing nodes within a separate Layout component. This prevents unnecessary re-renders of the <Video/>.
+const textContainer = createRef<Layout>();
+yield textContainer().add(<Txt text={w} />);
+```
+
+Use Layout components to contain frequently updated nodes, preventing unnecessary re-renders of parent components, especially large components like `<Video/>`.
+
+---
