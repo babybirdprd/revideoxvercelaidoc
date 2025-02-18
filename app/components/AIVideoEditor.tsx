@@ -1,10 +1,22 @@
 'use client';
 
-import { useChat } from '@ai-sdk/react';
+import { useChat, Message } from '@ai-sdk/react';
 import { useEffect, useState } from 'react';
 import { PaperAirplaneIcon } from '@heroicons/react/24/solid';
 import { Listbox } from '@headlessui/react';
 import { ChevronUpDownIcon } from '@heroicons/react/24/outline';
+
+interface MessageWithExperimentalOutput extends Message {
+	experimental_output?: {
+		name: string;
+		code: string;
+		variables: Array<{
+			name: string;
+			type: string;
+			description: string;
+		}>;
+	};
+}
 
 interface SceneData {
 	repoName: string;
@@ -30,7 +42,7 @@ export function AIVideoEditor() {
 		errors: string[];
 	} | null>(null);
 
-	const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+	const { messages, input, handleInputChange, handleSubmit, status } = useChat({
 		api: '/api/ai',
 		body: {
 			sceneData,
@@ -41,8 +53,13 @@ export function AIVideoEditor() {
 				setIsApplyingCode(true);
 				try {
 					// Handle structured data for templates
-					if (selectedOperation.id === 'template' && message.content) {
-						const template = JSON.parse(message.content);
+					if (selectedOperation.id === 'template') {
+						// Check for experimental_output first
+						const assistantMessage = message as MessageWithExperimentalOutput;
+						const template = assistantMessage.experimental_output || JSON.parse(message.content);
+						if (!template || !template.name || !template.code || !template.variables) {
+							throw new Error('Invalid template format');
+						}
 						await fetch('/api/apply-template', {
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
@@ -58,6 +75,10 @@ export function AIVideoEditor() {
 					}
 				} catch (error) {
 					console.error('Error applying changes:', error);
+					setValidationStatus({
+						isValid: false,
+						errors: [error instanceof Error ? error.message : 'Unknown error applying changes']
+					});
 				} finally {
 					setIsApplyingCode(false);
 				}
@@ -75,25 +96,27 @@ export function AIVideoEditor() {
 		<div className="flex flex-col h-[calc(100vh-8rem)] rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
 			<div className="p-4 border-b border-gray-200 dark:border-gray-800">
 				<Listbox value={selectedOperation} onChange={setSelectedOperation}>
-					<div className="relative">
+					<Listbox.Root>
+						<div className="relative">
 						<Listbox.Button className="relative w-full cursor-pointer rounded-lg bg-white dark:bg-gray-800 py-2 pl-3 pr-10 text-left border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
 							<span className="block truncate">{selectedOperation.name}</span>
 							<span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
 								<ChevronUpDownIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
 							</span>
 						</Listbox.Button>
+						
 						<Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white dark:bg-gray-800 py-1 shadow-lg border border-gray-200 dark:border-gray-700">
 							{OPERATION_TYPES.map((operation) => (
 								<Listbox.Option
 									key={operation.id}
 									value={operation}
-									className={({ active }) =>
+									className={({ active }: { active: boolean }) =>
 										`relative cursor-pointer select-none py-2 pl-10 pr-4 ${
 											active ? 'bg-blue-100 dark:bg-blue-900/20' : ''
 										}`
 									}
 								>
-									{({ selected }) => (
+									{({ selected }: { selected: boolean }) => (
 										<>
 											<span className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}>
 												{operation.name}
@@ -107,7 +130,9 @@ export function AIVideoEditor() {
 							))}
 						</Listbox.Options>
 					</div>
-				</Listbox>
+				</Listbox.Root>
+			</Listbox>
+
 			</div>
 
 			<div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
@@ -152,7 +177,7 @@ export function AIVideoEditor() {
 					</div>
 				))}
 				
-				{(isApplyingCode || isLoading) && (
+				{(isApplyingCode || status !== 'ready') && (
 					<div className="flex justify-center">
 						<div className="bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-4 py-2 rounded">
 							{isApplyingCode ? 'Applying changes...' : 'Generating...'}

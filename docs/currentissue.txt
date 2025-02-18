@@ -1,0 +1,39 @@
+[{
+	"resource": "/d:/RevideoAI/revideo/my-revideo-app/ai-video/app/components/AIVideoEditor.tsx",
+	"owner": "typescript",
+	"code": "2339",
+	"severity": 8,
+	"message": "Property 'Root' does not exist on type '_internal_ComponentListbox & { Button: _internal_ComponentListboxButton; Label: _internal_ComponentListboxLabel; Options: _internal_ComponentListboxOptions; Option: _internal_ComponentListboxOption; SelectedOption: _internal_ComponentListboxSelectedOption; }'.",
+	"source": "ts",
+	"startLineNumber": 98,
+	"startColumn": 14,
+	"endLineNumber": 98,
+	"endColumn": 18
+}]
+
+
+[{
+	"resource": "/d:/RevideoAI/revideo/my-revideo-app/ai-video/app/components/TemplateVariablesModal.tsx",
+	"owner": "typescript",
+	"code": "18048",
+	"severity": 8,
+	"message": "'template.variables' is possibly 'undefined'.",
+	"source": "ts",
+	"startLineNumber": 63,
+	"startColumn": 11,
+	"endLineNumber": 63,
+	"endColumn": 29
+}]
+
+
+---
+
+
+PS D:\RevideoAI\revideo\my-revideo-app\ai-video> npx tsc --noEmit
+app/components/AIVideoEditor.tsx:128:11 - error TS17002: Expected corresponding JSX closing tag for 'Listbox.Item'.
+
+128         </Listbox.Option>
+              ~~~~~~~~~~~~~~
+
+
+Found 1 error in app/components/AIVideoEditor.tsx:128

@@ -4,7 +4,7 @@ import {createRef, all, waitFor, SceneDescription} from '@revideo/core';
 import {ThreadGeneratorFactory} from '@revideo/core/lib/scenes';
 import {Template} from './index';
 
-function createTextRevealScene(): SceneDescription<ThreadGeneratorFactory<View2D>> {
+function createTextRevealScene(args: {text?: string} = {}): SceneDescription<ThreadGeneratorFactory<View2D>> {
 	return makeScene2D('text-reveal', function* (view) {
 		const textRef = createRef<Txt>();
 
@@ -21,7 +21,7 @@ function createTextRevealScene(): SceneDescription<ThreadGeneratorFactory<View2D
 
 		// Animate text appearance
 		yield* textRef().opacity(1, 0.5);
-		yield* textRef().text('Welcome to Revideo', 1.5);
+		yield* textRef().text(args.text || 'Welcome to Revideo', 1.5);
 		yield* waitFor(1);
 	});
 }
@@ -31,6 +31,14 @@ export const textRevealTemplate: Template = {
 	name: 'Text Reveal Animation',
 	description: 'Simple text reveal with fade-in animation',
 	tags: ['text', 'animation', 'reveal', 'fade'],
+	variables: [
+		{
+			name: 'text',
+			description: 'Text to reveal',
+			type: 'string'
+		}
+	],
 	scene: createTextRevealScene,
+	code: '', // This will be populated by sceneToCode in index.ts
 };
 

@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { parse as parseTypescript } from '@typescript-eslint/typescript-estree';
+import type {View2D} from '@revideo/2d';
 
 export interface CodeValidationResult {
 	isValid: boolean;
@@ -51,29 +52,14 @@ export async function applyCodeToScene(code: string): Promise<void> {
 		// Create backup before making changes
 		backupPath = await createBackup(scenePath);
 
-		// Read the current scene file
-		const currentScene = await fs.readFile(scenePath, 'utf-8');
-		
-		// Find the makeScene2D function content
-		const sceneMatch = currentScene.match(/makeScene2D\(['"]main['"], function\* \(view\) {[\s\S]*}\);/);
-		
-		if (!sceneMatch) {
-			throw new Error('Could not find scene function in file');
-		}
-		
-		// Replace the scene content with the new code
-		const updatedScene = currentScene.replace(
-			sceneMatch[0],
-			`makeScene2D('main', function* (view) {\n${code}\n});`
-		);
-		
-		// Write the updated scene back to the file
-		await fs.writeFile(scenePath, updatedScene, 'utf-8');
+		// Write the new scene file with the new code
+		await fs.writeFile(scenePath, code, 'utf-8');
 
 		// If everything succeeded, remove the backup
 		if (backupPath) {
 			await fs.unlink(backupPath);
 		}
+
 	} catch (error) {
 		// Restore from backup if we have one and something went wrong
 		if (backupPath) {

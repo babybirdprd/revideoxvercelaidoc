@@ -4,10 +4,15 @@ import {createRef, all, waitFor, SceneDescription} from '@revideo/core';
 import {ThreadGeneratorFactory} from '@revideo/core/lib/scenes';
 import {Template} from './index';
 
-function createDataVisualizationScene(): SceneDescription<ThreadGeneratorFactory<View2D>> {
+interface DataPoint {
+	label: string;
+	value: number;
+}
+
+function createDataVisualizationScene(args: {data?: DataPoint[]} = {}): SceneDescription<ThreadGeneratorFactory<View2D>> {
 	return makeScene2D('data-visualization', function* (view) {
-		// Sample data - will be replaced by user data
-		const data = [
+		// Use provided data or fallback to sample data
+		const data = args.data || [
 			{ label: 'A', value: 30 },
 			{ label: 'B', value: 50 },
 			{ label: 'C', value: 20 },
@@ -89,5 +94,13 @@ export const dataVisualizationTemplate: Template = {
 	name: 'Bar Chart Animation',
 	description: 'Animated bar chart with labels and values',
 	tags: ['data', 'chart', 'animation', 'bars'],
+	variables: [
+		{
+			name: 'data',
+			description: 'Array of data points with label and value properties',
+			type: 'array'
+		}
+	],
 	scene: createDataVisualizationScene,
+	code: '', // This will be populated by sceneToCode in index.ts
 };

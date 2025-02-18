@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -41,8 +42,15 @@ export async function GET() {
 		// Extract basic data
 		const repoNameMatch = currentScene.match(/const exampleRepoName = '(.*)';/);
 		const repoImageMatch = currentScene.match(/const exampleRepoImage = '(.*)';/);
-		const dataMatch = currentScene.match(/const exampleData = \[(.*?)\];/s);
-		
+		const dataMatch = currentScene.match(/const exampleData = \[([\s\S]*?)\];/);
+		const parsedData = dataMatch 
+			? dataMatch[1]
+				.split(',')
+				.map(num => num.trim())
+				.filter(num => num.length > 0)
+				.map(num => parseInt(num))
+			: [];
+
 		// Extract scene elements (simplified representation)
 		const elements = [
 			{ type: 'Line', properties: { lineWidth: 30, stroke: '#3EAC45' } },
@@ -82,7 +90,7 @@ export async function GET() {
 		const sceneData: SceneData = {
 			repoName: repoNameMatch ? repoNameMatch[1] : 'redotvideo/revideo',
 			repoImage: repoImageMatch ? repoImageMatch[1] : 'https://avatars.githubusercontent.com/u/133898679',
-			data: dataMatch ? JSON.parse(`[${dataMatch[1]}]`) : [],
+			data: parsedData,
 			sceneStructure: {
 				elements,
 				animations,
@@ -94,9 +102,11 @@ export async function GET() {
 			},
 		};
 		
-		return Response.json(sceneData);
+		return NextResponse.json(sceneData);
+
 	} catch (error) {
 		console.error('Error reading scene data:', error);
-		return new Response('Error reading scene data', { status: 500 });
+		return NextResponse.json({ error: 'Error reading scene data' }, { status: 500 });
+
 	}
 }
