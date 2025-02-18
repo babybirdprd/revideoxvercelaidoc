@@ -6,6 +6,10 @@ import {useState} from 'react';
 import {LoaderCircle} from 'lucide-react';
 import {parseStream} from '../utils/parse';
 import project from '@/revideo/project';
+import {AIVideoEditor} from './components/AIVideoEditor';
+import {ProjectList} from './components/ProjectList';
+import {TemplateGallery} from './components/TemplateGallery';
+import {Tab} from '@headlessui/react';
 
 function Button({
 	children,
@@ -135,8 +139,15 @@ export default function Home() {
 	}
 
 	return (
-		<>
-			<div className="m-auto p-12 max-w-7xl flex flex-col gap-y-4">
+		<div className="flex h-screen">
+			{/* Left sidebar: Project List */}
+			<div className="w-[300px] border-r p-4 overflow-auto">
+				<ProjectList />
+			</div>
+			
+			{/* Main content area */}
+			<div className="flex-1 overflow-auto">
+				<div className="m-auto p-8 max-w-7xl flex flex-col gap-y-4">
 				<div>
 					<div className="text-sm text-gray-700 mb-2">Repository</div>
 					<div className="flex gap-x-4 text-sm">
@@ -199,6 +210,41 @@ export default function Home() {
 					repoImage={repoImage}
 				/>
 			</div>
-		</>
+		</div>
+
+		{/* Right side: Tabbed interface for AI Editor and Templates */}
+		<div className="w-[400px] border-l overflow-auto">
+			<Tab.Group>
+				<Tab.List className="flex border-b border-gray-200 dark:border-gray-800">
+					<Tab className={({ selected }) =>
+						`flex-1 px-4 py-2 text-sm font-medium focus:outline-none ${
+							selected
+								? 'text-blue-500 border-b-2 border-blue-500'
+								: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+						}`
+					}>
+						AI Editor
+					</Tab>
+					<Tab className={({ selected }) =>
+						`flex-1 px-4 py-2 text-sm font-medium focus:outline-none ${
+							selected
+								? 'text-blue-500 border-b-2 border-blue-500'
+								: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+						}`
+					}>
+						Templates
+					</Tab>
+				</Tab.List>
+				<Tab.Panels className="p-4">
+					<Tab.Panel>
+						<AIVideoEditor />
+					</Tab.Panel>
+					<Tab.Panel>
+						<TemplateGallery />
+					</Tab.Panel>
+				</Tab.Panels>
+			</Tab.Group>
+		</div>
+	</div>
 	);
 }

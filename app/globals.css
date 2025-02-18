@@ -1,3 +1,50 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+	--foreground-rgb: 0, 0, 0;
+	--background-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--foreground-rgb: 255, 255, 255;
+		--background-rgb: 17, 24, 39;
+	}
+}
+
+body {
+	@apply antialiased;
+}
+
+/* Custom scrollbar for dark mode */
+@layer utilities {
+	.scrollbar-thin {
+		scrollbar-width: thin;
+	}
+	
+	.dark .scrollbar-thin::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+		background-color: rgb(17, 24, 39);
+	}
+	
+	.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+		background-color: rgb(55, 65, 81);
+		border-radius: 4px;
+	}
+	
+	.dark .scrollbar-thin::-webkit-scrollbar-track {
+		background-color: rgb(31, 41, 55);
+	}
+}
+
+/* Code block styling */
+pre {
+	@apply p-4 rounded-lg bg-gray-100 dark:bg-gray-800 overflow-x-auto;
+}
+
+code {
+	@apply font-mono text-sm;
+}

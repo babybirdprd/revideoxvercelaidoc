@@ -1,0 +1,16 @@
+{
+	"compilerOptions": {
+		"target": "es2018",
+		"lib": ["es2018", "dom", "dom.iterable"],
+		"module": "esnext",
+		"moduleResolution": "node",
+		"jsx": "react-jsx",
+		"jsxImportSource": "@revideo/2d",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"isolatedModules": true
+	},
+	"include": ["./**/*.ts", "./**/*.tsx"],
+	"exclude": ["node_modules"]
+}
